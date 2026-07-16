@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zabbix-catalog-generator"
+version = "0.1.0"
+description = "Generate supervision catalogues from Zabbix YAML templates"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "oxame" }]
+dependencies = [
+  "openpyxl>=3.1.5,<4",
+  "PyYAML>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+zabbix-catalog = "zabbix_catalog_generator.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zabbix_catalog_generator"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
