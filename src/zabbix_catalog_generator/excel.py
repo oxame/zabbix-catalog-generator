@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+from copy import copy
+from pathlib import Path
+import re
+
+from openpyxl import load_workbook
+from openpyxl.worksheet.worksheet import Worksheet
+
+from .models import ProbeDefinition, TriggerDefinition
+
+HEADERS = {
+    "type_policy": "Type de politique",
+    "supervisor": "Type de superviseur",
+    "policy_name": "Nom de la politique",
+    "collection_method": "Méthode de Collecte",
+    "environment": "Environnement",
+    "target_property": "Propriété de la Cible",
+    "resource_type": "Type de ressource",
+    "lld": "LLD",
+    "resource": "Ressource",
+    "key": "Clef",
+    "description": "Description",
+    "frequency": "Fréquence",
+    "trigger_name": "Triger Name",
+    "condition": "Condition de l'alerte",
+    "severity": "Sévérité",
+    "alert_message": "Message de l'alerte",
+    "retention": "Métrologie / rétention",
+}
+
+SEVERITY_LABELS = {
+    "NOT_CLASSIFIED": "Non classé",
+    "INFORMATION": "Information",
+    "WARNING": "Avertissement",
+    "AVERAGE": "Moyen",
+    "HIGH": "Haut",
+    "DISASTER": "Désastre",
+}
+
+
+def _normalise(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _find_header_row(sheet: Worksheet) -> tuple[int, dict[str, int]]:
+    expected = {_normalise(value): key for key, value in HEADERS.items()}
+    for row in range(1, min(sheet.max_row, 50) + 1):
+        mapping: dict[str, int] = {}
+        for column in range(1, sheet.max_column + 1):
+            normalised = _normalise(sheet.cell(row, column).value)
+            if normalised in expected:
+                mapping[expected[normalised]] = column
+        if "resource" in mapping and "key" in mapping and "description" in mapping:
+            return row, mapping
+    raise ValueError("The catalogue model does not contain the expected header row")
+
+
+def _capture_row_style(sheet: Worksheet, source_row: int) -> tuple[float | None, list[dict[str, object]]]:
+    styles: list[dict[str, object]] = []
+    for column in range(1, sheet.max_column + 1):
+        source = sheet.cell(source_row, column)
+        styles.append({
+            "style": copy(source._style),
+            "number_format": source.number_format,
+            "alignment": copy(source.alignment),
+            "protection": copy(source.protection),
+        })
+    return sheet.row_dimensions[source_row].height, styles
+
+
+def _apply_row_style(
+    sheet: Worksheet,
+    target_row: int,
+    row_style: tuple[float | None, list[dict[str, object]]],
+) -> None:
+    height, styles = row_style
+    sheet.row_dimensions[target_row].height = height
+    for column, style in enumerate(styles, start=1):
+        target = sheet.cell(target_row, column)
+        target._style = copy(style["style"])
+        target.number_format = str(style["number_format"])
+        target.alignment = copy(style["alignment"])
+        target.protection = copy(style["protection"])
+
+
+def _set(sheet: Worksheet, row: int, columns: dict[str, int], key: str, value: object) -> None:
+    column = columns.get(key)
+    if column:
+        sheet.cell(row, column).value = value
+
+
+def _trigger_condition(trigger: TriggerDefinition) -> str:
+    if trigger.expression and trigger.recovery_expression:
+        return f"Déclenchement : {trigger.expression}\nRétablissement : {trigger.recovery_expression}"
+    return trigger.expression
+
+
+def _retention(probe: ProbeDefinition) -> str:
+    values = []
+    if probe.history:
+        values.append(f"Historique : {probe.history}")
+    if probe.trends:
+        values.append(f"Tendances : {probe.trends}")
+    return " / ".join(values)
+
+
+def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> dict[str, object]:
+    return {
+        "type_policy": "STD",
+        "supervisor": "Zabbix",
+        "policy_name": probe.template_name,
+        "collection_method": "Agent" if "AGENT" in probe.item_type else probe.item_type,
+        "environment": "PROD/QUAL",
+        "target_property": "Oracle" if "oracle" in probe.template_name.casefold() else "",
+        "resource_type": "BDD" if "oracle" in probe.template_name.casefold() else "",
+        "lld": "Yes" if probe.lld else "No",
+        "resource": probe.name,
+        "key": probe.key,
+        "description": probe.description,
+        "frequency": probe.delay,
+        "trigger_name": trigger.name if trigger else "",
+        "condition": _trigger_condition(trigger) if trigger else "",
+        "severity": SEVERITY_LABELS.get(trigger.severity, trigger.severity) if trigger else "",
+        "alert_message": trigger.description if trigger else "",
+        "retention": _retention(probe),
+    }
+
+
+def generate_catalogue(
+    model_path: str | Path,
+    output_path: str | Path,
+    probes: list[ProbeDefinition],
+    *,
+    sheet_name: str | None = None,
+) -> Path:
+    """Populate a copy of the catalogue model with active probes."""
+
+    output = Path(output_path)
+    workbook = load_workbook(Path(model_path))
+    sheet = workbook[sheet_name] if sheet_name else workbook.active
+    header_row, columns = _find_header_row(sheet)
+    first_data_row = header_row + 2 if sheet.cell(header_row + 1, 1).value is None else header_row + 1
+    row_style = _capture_row_style(sheet, first_data_row)
+
+    if sheet.max_row >= first_data_row:
+        sheet.delete_rows(first_data_row, sheet.max_row - first_data_row + 1)
+
+    output_rows: list[tuple[ProbeDefinition, TriggerDefinition | None]] = []
+    for probe in probes:
+        if probe.triggers:
+            output_rows.extend((probe, trigger) for trigger in probe.triggers)
+        else:
+            output_rows.append((probe, None))
+
+    for offset, (probe, trigger) in enumerate(output_rows):
+        row = first_data_row + offset
+        _apply_row_style(sheet, row, row_style)
+        for key, value in _row_values(probe, trigger).items():
+            _set(sheet, row, columns, key, value)
+
+    sheet.auto_filter.ref = f"A{header_row}:{sheet.cell(header_row, sheet.max_column).coordinate}"
+    sheet.freeze_panes = f"A{first_data_row}"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(output)
+    return output
