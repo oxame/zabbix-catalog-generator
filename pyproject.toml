@@ -4,21 +4,40 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zabbix-catalog-generator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generate supervision catalogues from Zabbix YAML templates"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "oxame" }]
+keywords = ["zabbix", "monitoring", "catalogue", "excel"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: System :: Monitoring",
+]
 dependencies = [
   "openpyxl>=3.1.5,<4",
   "PyYAML>=6.0.2,<7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/oxame/zabbix-catalog-generator"
+Repository = "https://github.com/oxame/zabbix-catalog-generator"
+Issues = "https://github.com/oxame/zabbix-catalog-generator/issues"
+
 [project.optional-dependencies]
 dev = [
+  "build>=1.2,<2",
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",
+  "twine>=6,<7",
 ]
 
 [project.scripts]
