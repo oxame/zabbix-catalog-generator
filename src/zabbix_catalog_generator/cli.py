@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import sys
 
@@ -8,10 +9,22 @@ from .excel import generate_catalogue
 from .parser import TemplateFormatError, load_active_probes
 
 
+def _package_version() -> str:
+    try:
+        return version("zabbix-catalog-generator")
+    except PackageNotFoundError:
+        return "0.2.0"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zabbix-catalog",
         description="Generate an Excel supervision catalogue from active Zabbix probes.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"Zabbix Catalog Generator {_package_version()}",
     )
     parser.add_argument("template", type=Path, help="Zabbix YAML export")
     parser.add_argument("--model", required=True, type=Path, help="Excel catalogue model")
