@@ -11,6 +11,9 @@ zabbix_export:
   templates:
     - name: Demo
       items:
+        - name: Raw value
+          key: demo.raw
+          delay: 1m
         - name: Active item
           key: demo.active
           delay: 5m
@@ -20,6 +23,15 @@ zabbix_export:
               priority: HIGH
             - name: Disabled trigger
               status: DISABLED
+        - name: Dependent item
+          key: demo.dependent
+          type: DEPENDENT
+          master_item:
+            key: demo.raw
+        - name: Calculated item
+          key: demo.calculated
+          type: CALCULATED
+          params: last(//demo.active) + last(//demo.raw)
         - name: Disabled item
           key: demo.disabled
           status: DISABLED
@@ -46,11 +58,19 @@ zabbix_export:
 
     probes = load_active_probes(source)
 
-    assert [probe.key for probe in probes] == ["demo.active", "demo.prototype[{#NAME}]"]
-    assert [trigger.name for trigger in probes[0].triggers] == [
+    assert [probe.key for probe in probes] == [
+        "demo.raw",
+        "demo.active",
+        "demo.dependent",
+        "demo.calculated",
+        "demo.prototype[{#NAME}]",
+    ]
+    assert [trigger.name for trigger in probes[1].triggers] == [
         "Active trigger",
         "Standalone trigger",
     ]
-    assert probes[1].triggers[0].name == "Prototype trigger"
-    assert probes[1].lld is True
-    assert probes[1].discovery_rule == "Active discovery"
+    assert probes[2].dependency_names == ("Raw value",)
+    assert probes[3].dependency_names == ("Active item", "Raw value")
+    assert probes[4].triggers[0].name == "Prototype trigger"
+    assert probes[4].lld is True
+    assert probes[4].discovery_rule == "Active discovery"
