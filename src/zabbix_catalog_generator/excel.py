@@ -9,6 +9,7 @@ from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .enrichment import enrich_probe
 from .models import ProbeDefinition, TriggerDefinition
 
 HEADERS = {
@@ -19,6 +20,7 @@ HEADERS = {
     "environment": "Environnement",
     "target_property": "Propriété de la Cible",
     "resource_type": "Type de ressource",
+    "category": "Catégorie",
     "lld": "LLD",
     "resource": "Ressource",
     "key": "Clef",
@@ -121,14 +123,16 @@ def _resource_value(probe: ProbeDefinition) -> str | CellRichText:
 
 
 def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> dict[str, object]:
+    enriched = enrich_probe(probe)
     return {
         "type_policy": "STD",
         "supervisor": "Zabbix",
         "policy_name": probe.template_name,
-        "collection_method": "Agent" if "AGENT" in probe.item_type else probe.item_type,
+        "collection_method": enriched.collection_method,
         "environment": "PROD/QUAL",
-        "target_property": "Oracle" if "oracle" in probe.template_name.casefold() else "",
-        "resource_type": "BDD" if "oracle" in probe.template_name.casefold() else "",
+        "target_property": enriched.target_property,
+        "resource_type": enriched.resource_type,
+        "category": enriched.category,
         "lld": "Yes" if probe.lld else "No",
         "resource": _resource_value(probe),
         "key": probe.key,
