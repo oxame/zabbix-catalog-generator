@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 
 from openpyxl import load_workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .models import ProbeDefinition, TriggerDefinition
@@ -37,6 +39,8 @@ SEVERITY_LABELS = {
     "HIGH": "Haut",
     "DISASTER": "Désastre",
 }
+
+DEPENDENCY_FONT = InlineFont(color="008000", b=True)
 
 
 def _normalise(value: object) -> str:
@@ -105,6 +109,17 @@ def _retention(probe: ProbeDefinition) -> str:
     return " / ".join(values)
 
 
+def _resource_value(probe: ProbeDefinition) -> str | CellRichText:
+    if not probe.dependency_names:
+        return probe.name
+
+    value = CellRichText()
+    for dependency_name in probe.dependency_names:
+        value.append(TextBlock(DEPENDENCY_FONT, f"Dépend de : {dependency_name}\n"))
+    value.append(probe.name)
+    return value
+
+
 def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> dict[str, object]:
     return {
         "type_policy": "STD",
@@ -115,7 +130,7 @@ def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> di
         "target_property": "Oracle" if "oracle" in probe.template_name.casefold() else "",
         "resource_type": "BDD" if "oracle" in probe.template_name.casefold() else "",
         "lld": "Yes" if probe.lld else "No",
-        "resource": probe.name,
+        "resource": _resource_value(probe),
         "key": probe.key,
         "description": probe.description,
         "frequency": probe.delay,
