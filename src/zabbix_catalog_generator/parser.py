@@ -33,6 +33,16 @@ def _enabled_triggers(raw: Iterable[dict[str, Any]] | None) -> tuple[TriggerDefi
     return tuple(_trigger_from_dict(trigger) for trigger in (raw or []) if _is_enabled(trigger))
 
 
+def _item_triggers(item: dict[str, Any]) -> tuple[TriggerDefinition, ...]:
+    """Read normal triggers and trigger prototypes embedded in an item definition."""
+
+    raw_triggers = [
+        *(item.get("triggers", []) or []),
+        *(item.get("trigger_prototypes", []) or []),
+    ]
+    return _enabled_triggers(raw_triggers)
+
+
 def _master_item_key(item: dict[str, Any]) -> str:
     master_item = item.get("master_item")
     if isinstance(master_item, dict):
@@ -65,7 +75,7 @@ def _probe_from_item(
         discovery_rule=discovery_rule,
         dependency_keys=(master_key,) if master_key else (),
         calculation_formula=str(item.get("params", "")),
-        triggers=_enabled_triggers(item.get("triggers")),
+        triggers=_item_triggers(item),
     )
 
 
