@@ -40,8 +40,15 @@ zabbix_export:
           item_prototypes:
             - name: Active prototype {#NAME}
               key: demo.prototype[{#NAME}]
+              trigger_prototypes:
+                - name: Nested prototype trigger
+                  expression: last(/Demo/demo.prototype[{#NAME}])>1
+                  priority: AVERAGE
+                - name: Disabled nested prototype trigger
+                  expression: last(/Demo/demo.prototype[{#NAME}])>2
+                  status: DISABLED
           trigger_prototypes:
-            - name: Prototype trigger
+            - name: Rule-level prototype trigger
               expression: last(/Demo/demo.prototype[{#NAME}])>0
         - name: Disabled discovery
           status: DISABLED
@@ -71,6 +78,10 @@ zabbix_export:
     ]
     assert probes[2].dependency_names == ("Raw value",)
     assert probes[3].dependency_names == ("Active item", "Raw value")
-    assert probes[4].triggers[0].name == "Prototype trigger"
+    assert [trigger.name for trigger in probes[4].triggers] == [
+        "Nested prototype trigger",
+        "Rule-level prototype trigger",
+    ]
+    assert probes[4].triggers[0].severity == "AVERAGE"
     assert probes[4].lld is True
     assert probes[4].discovery_rule == "Active discovery"
