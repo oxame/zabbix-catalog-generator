@@ -33,6 +33,23 @@ def _enabled_triggers(raw: Iterable[dict[str, Any]] | None) -> tuple[TriggerDefi
     return tuple(_trigger_from_dict(trigger) for trigger in (raw or []) if _is_enabled(trigger))
 
 
+def _item_triggers(item: dict[str, Any]) -> tuple[TriggerDefinition, ...]:
+    """Read normal triggers and trigger prototypes embedded in an item definition."""
+
+    raw_triggers = [
+        *(item.get("triggers", []) or []),
+        *(item.get("trigger_prototypes", []) or []),
+    ]
+    return _enabled_triggers(raw_triggers)
+
+
+def _master_item_key(item: dict[str, Any]) -> str:
+    master_item = item.get("master_item")
+    if isinstance(master_item, dict):
+        return str(master_item.get("key", ""))
+    return ""
+
+
 def _probe_from_item(
     item: dict[str, Any],
     *,
@@ -41,6 +58,7 @@ def _probe_from_item(
     lld: bool = False,
     discovery_rule: str = "",
 ) -> ProbeDefinition:
+    master_key = _master_item_key(item)
     return ProbeDefinition(
         template_name=template_name,
         template_description=template_description,
@@ -55,7 +73,9 @@ def _probe_from_item(
         trends=str(item.get("trends", "")),
         lld=lld,
         discovery_rule=discovery_rule,
-        triggers=_enabled_triggers(item.get("triggers")),
+        dependency_keys=(master_key,) if master_key else (),
+        calculation_formula=str(item.get("params", "")),
+        triggers=_item_triggers(item),
     )
 
 
@@ -80,6 +100,35 @@ def _attach_triggers(
         trigger = _trigger_from_dict(raw_trigger)
         result[index] = replace(result[index], triggers=(*result[index].triggers, trigger))
     return result
+
+
+def _resolve_dependencies(probes: list[ProbeDefinition]) -> list[ProbeDefinition]:
+    """Resolve dependency keys to item names, including calculated item formulas."""
+
+    key_to_name = {probe.key: probe.name for probe in probes if probe.key}
+    known_keys = sorted(key_to_name, key=len, reverse=True)
+    resolved: list[ProbeDefinition] = []
+
+    for probe in probes:
+        dependency_keys = list(probe.dependency_keys)
+        if probe.item_type.upper() == "CALCULATED" and probe.calculation_formula:
+            for candidate in known_keys:
+                if candidate != probe.key and candidate in probe.calculation_formula:
+                    dependency_keys.append(candidate)
+
+        unique_keys = tuple(dict.fromkeys(key for key in dependency_keys if key))
+        dependency_names = tuple(
+            dict.fromkeys(key_to_name[key] for key in unique_keys if key in key_to_name)
+        )
+        resolved.append(
+            replace(
+                probe,
+                dependency_keys=unique_keys,
+                dependency_names=dependency_names,
+            )
+        )
+
+    return resolved
 
 
 def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
@@ -132,4 +181,5 @@ def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
                     )
             probes.extend(_attach_triggers(rule_probes, rule.get("trigger_prototypes")))
 
-    return _attach_triggers(probes, document["zabbix_export"].get("triggers"))
+    probes = _attach_triggers(probes, document["zabbix_export"].get("triggers"))
+    return _resolve_dependencies(probes)

@@ -31,4 +31,7 @@ class ProbeDefinition:
     trends: str
     lld: bool = False
     discovery_rule: str = ""
+    dependency_keys: tuple[str, ...] = field(default_factory=tuple)
+    dependency_names: tuple[str, ...] = field(default_factory=tuple)
+    calculation_formula: str = ""
     triggers: tuple[TriggerDefinition, ...] = field(default_factory=tuple)

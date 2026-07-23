@@ -5,8 +5,12 @@ from pathlib import Path
 import re
 
 from openpyxl import load_workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
+from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .enrichment import enrich_probe
 from .models import ProbeDefinition, TriggerDefinition
 
 HEADERS = {
@@ -17,6 +21,7 @@ HEADERS = {
     "environment": "Environnement",
     "target_property": "Propriété de la Cible",
     "resource_type": "Type de ressource",
+    "category": "Catégorie",
     "lld": "LLD",
     "resource": "Ressource",
     "key": "Clef",
@@ -37,6 +42,17 @@ SEVERITY_LABELS = {
     "HIGH": "Haut",
     "DISASTER": "Désastre",
 }
+
+SEVERITY_STYLES = {
+    "NOT_CLASSIFIED": ("97AAB3", "FFFFFF"),
+    "INFORMATION": ("7499FF", "FFFFFF"),
+    "WARNING": ("FFC859", "000000"),
+    "AVERAGE": ("FFA059", "000000"),
+    "HIGH": ("E97659", "FFFFFF"),
+    "DISASTER": ("E45959", "FFFFFF"),
+}
+
+DEPENDENCY_FONT = InlineFont(color="008000", b=True)
 
 
 def _normalise(value: object) -> str:
@@ -90,6 +106,35 @@ def _set(sheet: Worksheet, row: int, columns: dict[str, int], key: str, value: o
         sheet.cell(row, column).value = value
 
 
+def _apply_trigger_style(
+    sheet: Worksheet,
+    row: int,
+    columns: dict[str, int],
+    trigger: TriggerDefinition,
+) -> None:
+    colors = SEVERITY_STYLES.get(trigger.severity.upper())
+    if not colors:
+        return
+
+    fill_color, font_color = colors
+    for key in ("trigger_name", "severity"):
+        column = columns.get(key)
+        if not column:
+            continue
+        cell = sheet.cell(row, column)
+        cell.fill = PatternFill(fill_type="solid", fgColor=fill_color)
+        cell.font = Font(
+            name=cell.font.name,
+            size=cell.font.size,
+            bold=cell.font.bold,
+            italic=cell.font.italic,
+            vertAlign=cell.font.vertAlign,
+            underline=cell.font.underline,
+            strike=cell.font.strike,
+            color=font_color,
+        )
+
+
 def _trigger_condition(trigger: TriggerDefinition) -> str:
     if trigger.expression and trigger.recovery_expression:
         return f"Déclenchement : {trigger.expression}\nRétablissement : {trigger.recovery_expression}"
@@ -105,17 +150,30 @@ def _retention(probe: ProbeDefinition) -> str:
     return " / ".join(values)
 
 
+def _resource_value(probe: ProbeDefinition) -> str | CellRichText:
+    if not probe.dependency_names:
+        return probe.name
+
+    value = CellRichText()
+    for dependency_name in probe.dependency_names:
+        value.append(TextBlock(DEPENDENCY_FONT, f"Dépend de : {dependency_name}\n"))
+    value.append(probe.name)
+    return value
+
+
 def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> dict[str, object]:
+    enriched = enrich_probe(probe)
     return {
         "type_policy": "STD",
         "supervisor": "Zabbix",
         "policy_name": probe.template_name,
-        "collection_method": "Agent" if "AGENT" in probe.item_type else probe.item_type,
+        "collection_method": enriched.collection_method,
         "environment": "PROD/QUAL",
-        "target_property": "Oracle" if "oracle" in probe.template_name.casefold() else "",
-        "resource_type": "BDD" if "oracle" in probe.template_name.casefold() else "",
+        "target_property": enriched.target_property,
+        "resource_type": enriched.resource_type,
+        "category": enriched.category,
         "lld": "Yes" if probe.lld else "No",
-        "resource": probe.name,
+        "resource": _resource_value(probe),
         "key": probe.key,
         "description": probe.description,
         "frequency": probe.delay,
@@ -158,6 +216,8 @@ def generate_catalogue(
         _apply_row_style(sheet, row, row_style)
         for key, value in _row_values(probe, trigger).items():
             _set(sheet, row, columns, key, value)
+        if trigger:
+            _apply_trigger_style(sheet, row, columns, trigger)
 
     sheet.auto_filter.ref = f"A{header_row}:{sheet.cell(header_row, sheet.max_column).coordinate}"
     sheet.freeze_panes = f"A{first_data_row}"
