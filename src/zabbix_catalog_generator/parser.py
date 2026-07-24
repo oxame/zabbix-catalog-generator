@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from .models import ProbeDefinition, TriggerDefinition
+from .models import Macro, ProbeDefinition, Tag, TriggerDefinition
 
 ENABLED = "ENABLED"
 
@@ -19,6 +19,52 @@ def _is_enabled(entity: dict[str, Any]) -> bool:
     return str(entity.get("status", ENABLED)).upper() == ENABLED
 
 
+def _tags(raw: Iterable[dict[str, Any]] | None) -> tuple[Tag, ...]:
+    return tuple(
+        (str(tag.get("tag", "")), str(tag.get("value", "")))
+        for tag in (raw or [])
+        if tag.get("tag")
+    )
+
+
+def _macros(raw: Iterable[dict[str, Any]] | None) -> tuple[Macro, ...]:
+    return tuple(
+        (str(macro.get("macro", "")), str(macro.get("value", "")))
+        for macro in (raw or [])
+        if macro.get("macro")
+    )
+
+
+def _preprocessing_steps(raw: Iterable[dict[str, Any]] | None) -> tuple[str, ...]:
+    steps: list[str] = []
+    for step in raw or []:
+        step_type = str(step.get("type", "")).replace("_", " ").strip()
+        parameters = step.get("parameters", []) or []
+        if not isinstance(parameters, list):
+            parameters = [parameters]
+        details = " ; ".join(str(parameter) for parameter in parameters if str(parameter))
+        rendered = f"{step_type}: {details}" if details else step_type
+        if rendered:
+            steps.append(rendered)
+    return tuple(steps)
+
+
+def _discovery_filters(rule: dict[str, Any]) -> tuple[str, ...]:
+    filter_definition = rule.get("filter") or {}
+    conditions = filter_definition.get("conditions", []) or []
+    rendered: list[str] = []
+    for condition in conditions:
+        macro = str(condition.get("macro", ""))
+        operator = str(condition.get("operator", "MATCHES")).replace("_", " ").lower()
+        value = str(condition.get("value", ""))
+        formula_id = str(condition.get("formulaid", ""))
+        prefix = f"{formula_id}: " if formula_id else ""
+        text = " ".join(part for part in (macro, operator, value) if part)
+        if text:
+            rendered.append(f"{prefix}{text}")
+    return tuple(rendered)
+
+
 def _trigger_from_dict(trigger: dict[str, Any]) -> TriggerDefinition:
     return TriggerDefinition(
         name=str(trigger.get("name", "")),
@@ -26,6 +72,7 @@ def _trigger_from_dict(trigger: dict[str, Any]) -> TriggerDefinition:
         severity=str(trigger.get("priority", "NOT_CLASSIFIED")),
         description=str(trigger.get("description", "")),
         recovery_expression=str(trigger.get("recovery_expression", "")),
+        tags=_tags(trigger.get("tags")),
     )
 
 
@@ -55,8 +102,11 @@ def _probe_from_item(
     *,
     template_name: str,
     template_description: str,
+    template_macros: tuple[Macro, ...],
+    template_tags: tuple[Tag, ...],
     lld: bool = False,
     discovery_rule: str = "",
+    filters: tuple[str, ...] = (),
 ) -> ProbeDefinition:
     master_key = _master_item_key(item)
     return ProbeDefinition(
@@ -75,6 +125,10 @@ def _probe_from_item(
         discovery_rule=discovery_rule,
         dependency_keys=(master_key,) if master_key else (),
         calculation_formula=str(item.get("params", "")),
+        preprocessing=_preprocessing_steps(item.get("preprocessing")),
+        filters=filters,
+        template_macros=template_macros,
+        template_tags=template_tags,
         triggers=_item_triggers(item),
     )
 
@@ -152,6 +206,8 @@ def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
 
         template_name = str(template.get("name") or template.get("template") or "")
         template_description = str(template.get("description", ""))
+        template_macros = _macros(template.get("macros"))
+        template_tags = _tags(template.get("tags"))
 
         for item in template.get("items", []) or []:
             if _is_enabled(item):
@@ -160,6 +216,8 @@ def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
                         item,
                         template_name=template_name,
                         template_description=template_description,
+                        template_macros=template_macros,
+                        template_tags=template_tags,
                     )
                 )
 
@@ -167,6 +225,7 @@ def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
             if not _is_enabled(rule):
                 continue
             rule_name = str(rule.get("name", ""))
+            filters = _discovery_filters(rule)
             rule_probes: list[ProbeDefinition] = []
             for prototype in rule.get("item_prototypes", []) or []:
                 if _is_enabled(prototype):
@@ -175,8 +234,11 @@ def load_active_probes(path: str | Path) -> list[ProbeDefinition]:
                             prototype,
                             template_name=template_name,
                             template_description=template_description,
+                            template_macros=template_macros,
+                            template_tags=template_tags,
                             lld=True,
                             discovery_rule=rule_name,
+                            filters=filters,
                         )
                     )
             probes.extend(_attach_triggers(rule_probes, rule.get("trigger_prototypes")))
