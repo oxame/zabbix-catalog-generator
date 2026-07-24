@@ -27,6 +27,9 @@ HEADERS = {
     "key": "Clef",
     "description": "Description",
     "frequency": "Fréquence",
+    "preprocessing": "Prétraitement",
+    "filters": "Filtres",
+    "macros": "Macros",
     "trigger_name": "Triger Name",
     "condition": "Condition de l'alerte",
     "severity": "Sévérité",
@@ -53,6 +56,7 @@ SEVERITY_STYLES = {
 }
 
 DEPENDENCY_FONT = InlineFont(color="008000", b=True)
+MACRO_PATTERN = re.compile(r"\{\$[^}]+\}")
 
 
 def _normalise(value: object) -> str:
@@ -161,6 +165,34 @@ def _resource_value(probe: ProbeDefinition) -> str | CellRichText:
     return value
 
 
+def _used_macros(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> str:
+    texts = [
+        probe.name,
+        probe.key,
+        probe.description,
+        probe.calculation_formula,
+        *probe.preprocessing,
+        *probe.filters,
+    ]
+    if trigger:
+        texts.extend(
+            [
+                trigger.name,
+                trigger.expression,
+                trigger.recovery_expression,
+                trigger.description,
+            ]
+        )
+
+    macro_index = dict(probe.template_macros)
+    found: list[str] = []
+    for text in texts:
+        for macro_name in MACRO_PATTERN.findall(text or ""):
+            if macro_name in macro_index and macro_name not in found:
+                found.append(macro_name)
+    return "\n".join(f"{name} = {macro_index[name]}" for name in found)
+
+
 def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> dict[str, object]:
     enriched = enrich_probe(probe)
     return {
@@ -177,12 +209,53 @@ def _row_values(probe: ProbeDefinition, trigger: TriggerDefinition | None) -> di
         "key": probe.key,
         "description": probe.description,
         "frequency": probe.delay,
+        "preprocessing": "\n".join(probe.preprocessing),
+        "filters": "\n".join(probe.filters),
+        "macros": _used_macros(probe, trigger),
         "trigger_name": trigger.name if trigger else "",
         "condition": _trigger_condition(trigger) if trigger else "",
         "severity": SEVERITY_LABELS.get(trigger.severity, trigger.severity) if trigger else "",
         "alert_message": trigger.description if trigger else "",
         "retention": _retention(probe),
     }
+
+
+def _write_tags_sheet(workbook, probes: list[ProbeDefinition]) -> None:
+    title = "Tags"
+    sheet = workbook[title] if title in workbook.sheetnames else workbook.create_sheet(title)
+    if sheet.max_row:
+        sheet.delete_rows(1, sheet.max_row)
+
+    headers = ("Niveau", "Élément", "Tag", "Valeur")
+    sheet.append(headers)
+    header_fill = PatternFill(fill_type="solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in sheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+
+    rows: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for probe in probes:
+        for tag, value in probe.template_tags:
+            row = ("Template", probe.template_name, tag, value)
+            if row not in seen:
+                seen.add(row)
+                rows.append(row)
+        for trigger in probe.triggers:
+            for tag, value in trigger.tags:
+                row = ("Trigger", trigger.name, tag, value)
+                if row not in seen:
+                    seen.add(row)
+                    rows.append(row)
+
+    for row in rows:
+        sheet.append(row)
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:D{max(sheet.max_row, 1)}"
+    widths = (14, 45, 28, 35)
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
 
 
 def generate_catalogue(
@@ -192,7 +265,7 @@ def generate_catalogue(
     *,
     sheet_name: str | None = None,
 ) -> Path:
-    """Populate a copy of the catalogue model with active probes."""
+    """Populate a copy of the catalogue model with active probes and metadata."""
 
     output = Path(output_path)
     workbook = load_workbook(Path(model_path))
@@ -221,6 +294,7 @@ def generate_catalogue(
 
     sheet.auto_filter.ref = f"A{header_row}:{sheet.cell(header_row, sheet.max_column).coordinate}"
     sheet.freeze_panes = f"A{first_data_row}"
+    _write_tags_sheet(workbook, probes)
     output.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(output)
     return output
