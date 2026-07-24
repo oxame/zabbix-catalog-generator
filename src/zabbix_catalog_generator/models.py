@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+Tag = tuple[str, str]
+Macro = tuple[str, str]
+
+
 @dataclass(slots=True, frozen=True)
 class TriggerDefinition:
     """An enabled Zabbix trigger associated with a monitoring item."""
@@ -12,6 +16,7 @@ class TriggerDefinition:
     severity: str = "Not classified"
     description: str = ""
     recovery_expression: str = ""
+    tags: tuple[Tag, ...] = field(default_factory=tuple)
 
 
 @dataclass(slots=True, frozen=True)
@@ -34,4 +39,8 @@ class ProbeDefinition:
     dependency_keys: tuple[str, ...] = field(default_factory=tuple)
     dependency_names: tuple[str, ...] = field(default_factory=tuple)
     calculation_formula: str = ""
+    preprocessing: tuple[str, ...] = field(default_factory=tuple)
+    filters: tuple[str, ...] = field(default_factory=tuple)
+    template_macros: tuple[Macro, ...] = field(default_factory=tuple)
+    template_tags: tuple[Tag, ...] = field(default_factory=tuple)
     triggers: tuple[TriggerDefinition, ...] = field(default_factory=tuple)
