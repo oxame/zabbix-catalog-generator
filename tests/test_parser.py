@@ -10,17 +10,30 @@ def test_only_enabled_items_rules_prototypes_and_triggers_are_loaded(tmp_path: P
 zabbix_export:
   templates:
     - name: Demo
+      macros:
+        - macro: '{$CPU.MAX}'
+          value: '90'
+      tags:
+        - tag: component
+          value: demo
       items:
         - name: Raw value
           key: demo.raw
           delay: 1m
-        - name: Active item
+        - name: Active item {$CPU.MAX}
           key: demo.active
           delay: 5m
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.value
           triggers:
             - name: Active trigger
-              expression: last(/Demo/demo.active)>0
+              expression: last(/Demo/demo.active)>{$CPU.MAX}
               priority: HIGH
+              tags:
+                - tag: scope
+                  value: performance
             - name: Disabled trigger
               status: DISABLED
         - name: Dependent item
@@ -37,6 +50,12 @@ zabbix_export:
           status: DISABLED
       discovery_rules:
         - name: Active discovery
+          filter:
+            conditions:
+              - macro: '{#NAME}'
+                operator: MATCHES_REGEX
+                value: ^eth
+                formulaid: A
           item_prototypes:
             - name: Active prototype {#NAME}
               key: demo.prototype[{#NAME}]
@@ -76,8 +95,12 @@ zabbix_export:
         "Active trigger",
         "Standalone trigger",
     ]
+    assert probes[1].preprocessing == ("JSONPATH: $.value",)
+    assert probes[1].template_macros == (("{$CPU.MAX}", "90"),)
+    assert probes[1].template_tags == (("component", "demo"),)
+    assert probes[1].triggers[0].tags == (("scope", "performance"),)
     assert probes[2].dependency_names == ("Raw value",)
-    assert probes[3].dependency_names == ("Active item", "Raw value")
+    assert probes[3].dependency_names == ("Active item {$CPU.MAX}", "Raw value")
     assert [trigger.name for trigger in probes[4].triggers] == [
         "Nested prototype trigger",
         "Rule-level prototype trigger",
@@ -85,3 +108,4 @@ zabbix_export:
     assert probes[4].triggers[0].severity == "AVERAGE"
     assert probes[4].lld is True
     assert probes[4].discovery_rule == "Active discovery"
+    assert probes[4].filters == ("A: {#NAME} matches regex ^eth",)
