@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from zabbix_catalog_generator.models import ProbeDefinition
-from zabbix_catalog_generator.models import TestCase
+from zabbix_catalog_generator.models import ProbeDefinition, TestCase
 
 
 def build_test_cases(
@@ -23,7 +20,6 @@ def build_test_cases(
         resource = probe.name
 
         for trigger in probe.triggers:
-
             test_cases.append(
                 TestCase(
                     policy_name=probe.template_name,
@@ -33,14 +29,13 @@ def build_test_cases(
                     test_type="PROBLEM",
                     expected_result=(
                         f'Trigger "{trigger.name}" '
-                        f'changes to PROBLEM '
-                        f'({trigger.severity}).'
+                        f"changes to PROBLEM "
+                        f"({trigger.severity})."
                     ),
                 )
             )
 
             if trigger.recovery_expression:
-
                 test_cases.append(
                     TestCase(
                         policy_name=probe.template_name,
