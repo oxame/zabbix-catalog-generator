@@ -57,7 +57,9 @@ _REQUIRED_HEADERS = {
 
 _USER_MACRO_PATTERN = re.compile(r"\{\$[^{}]+\}")
 _PLACEHOLDER_PATTERN = re.compile(r"\$\{([a-zA-Z0-9_.]+)\}")
-_TIME_FUNCTION_PATTERN = re.compile(r"\b(?:avg|min|max|sum|count|trendavg|trendmin|trendmax)\s*\(", re.I)
+_TIME_FUNCTION_PATTERN = re.compile(
+    r"\b(?:avg|min|max|sum|count|trendavg|trendmin|trendmax)\s*\(", re.I
+)
 
 
 def _normalise(value: object) -> str:
@@ -168,6 +170,10 @@ def _trigger_tags(trigger: TriggerDefinition) -> str:
     )
 
 
+def _trigger_dependencies(trigger: TriggerDefinition) -> str:
+    return "\n".join(trigger.dependencies)
+
+
 def _is_applicable(scenario: Scenario, trigger: TriggerDefinition, macros: str) -> bool:
     rule = scenario.applies.casefold()
     if rule == "always":
@@ -181,7 +187,7 @@ def _is_applicable(scenario: Scenario, trigger: TriggerDefinition, macros: str) 
     if rule == "time_window":
         return bool(_TIME_FUNCTION_PATTERN.search(trigger.expression))
     if rule == "dependencies":
-        return bool(getattr(trigger, "dependencies", ()))
+        return bool(trigger.dependencies)
     raise ValueError(f"Unknown scenario applicability rule: {scenario.applies}")
 
 
@@ -199,6 +205,7 @@ def _render_context(
     trigger: TriggerDefinition,
     macros: str,
     tags: str,
+    dependencies: str,
 ) -> dict[str, str]:
     return {
         "policy.name": probe.template_name,
@@ -212,6 +219,7 @@ def _render_context(
         "trigger.description": trigger.description,
         "trigger.macros": macros or "Aucune macro utilisée.",
         "trigger.tags": tags or "Aucun tag configuré.",
+        "trigger.dependencies": dependencies or "Aucune dépendance configurée.",
     }
 
 
@@ -228,7 +236,8 @@ def build_test_cases(
         for trigger in probe.triggers:
             macros = _trigger_macros(probe, trigger)
             tags = _trigger_tags(trigger)
-            context = _render_context(probe, trigger, macros, tags)
+            dependencies = _trigger_dependencies(trigger)
+            context = _render_context(probe, trigger, macros, tags, dependencies)
             for scenario in scenarios:
                 if not _is_applicable(scenario, trigger, macros):
                     continue
