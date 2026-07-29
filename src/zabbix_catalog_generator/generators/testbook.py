@@ -24,6 +24,7 @@ TESTBOOK_HEADERS: dict[str, tuple[str, ...]] = {
     ),
     "severity": ("Sévérité", "Severite", "Severity"),
     "test_type": ("Type de test", "Type", "Test type"),
+    "macros": ("Macros", "Macro", "Macros du déclencheur", "Trigger macros"),
     "prerequisites": ("Prérequis", "Prerequis", "Prerequisites"),
     "action": ("Action", "Actions"),
     "expected_result": ("Résultat attendu", "Resultat attendu", "Expected result"),
@@ -39,6 +40,8 @@ _REQUIRED_HEADERS = {
     "test_type",
     "expected_result",
 }
+
+_USER_MACRO_PATTERN = re.compile(r"\{\$[^{}]+\}")
 
 
 def _normalise(value: object) -> str:
@@ -126,12 +129,32 @@ def _write_test_case(
         sheet.cell(row, column).value = getattr(test_case, field)
 
 
+def _trigger_macros(probe: ProbeDefinition, expression: str, recovery_expression: str) -> str:
+    """Return only user macros referenced by a trigger, preserving expression order."""
+
+    values = dict(probe.template_macros)
+    seen: set[str] = set()
+    lines: list[str] = []
+    for macro in _USER_MACRO_PATTERN.findall(f"{expression}\n{recovery_expression}"):
+        if macro in seen:
+            continue
+        seen.add(macro)
+        value = values.get(macro)
+        lines.append(f"{macro}={value}" if value is not None else f"{macro}=<non définie>")
+    return "\n".join(lines)
+
+
 def build_test_cases(probes: list[ProbeDefinition]) -> list[TestCase]:
     """Create problem and recovery scenarios for enabled trigger definitions."""
 
     test_cases: list[TestCase] = []
     for probe in probes:
         for trigger in probe.triggers:
+            macros = _trigger_macros(
+                probe,
+                trigger.expression,
+                trigger.recovery_expression,
+            )
             test_cases.append(
                 TestCase(
                     policy_name=probe.template_name,
@@ -139,6 +162,7 @@ def build_test_cases(probes: list[ProbeDefinition]) -> list[TestCase]:
                     trigger_name=trigger.name,
                     severity=trigger.severity,
                     test_type="PROBLEM",
+                    macros=macros,
                     expected_result=f"Le déclencheur « {trigger.name} » passe en état PROBLEM.",
                 )
             )
@@ -150,6 +174,7 @@ def build_test_cases(probes: list[ProbeDefinition]) -> list[TestCase]:
                         trigger_name=trigger.name,
                         severity=trigger.severity,
                         test_type="RECOVERY",
+                        macros=macros,
                         expected_result=(
                             f"Le déclencheur « {trigger.name} » revient à l'état OK."
                         ),
