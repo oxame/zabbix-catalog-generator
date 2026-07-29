@@ -1,0 +1,28 @@
+- code: TEST-TRG-001
+  title: Déclenchement nominal
+  applies:
+    type: always
+
+  objective: >
+    Vérifier que le déclencheur « ${trigger.name} » se déclenche lorsque
+    la condition définie dans son expression est réellement atteinte.
+
+  prerequisites: >
+    La collecte de la ressource « ${resource.name} » est opérationnelle.
+
+  procedure: |
+    1. Vérifier que l'item « ${resource.name} » collecte correctement une valeur.
+    2. Relever la valeur normale avant le test.
+    3. Consulter les macros utilisées par le déclencheur :
+       ${trigger.macros}
+    4. Provoquer la condition d'anomalie définie par l'expression :
+       ${trigger.expression}
+    5. Attendre le prochain cycle de collecte (${resource.delay}).
+    6. Contrôler la valeur reçue par Zabbix.
+    7. Vérifier le passage du déclencheur en état PROBLÈME.
+    8. Contrôler le nom de l'événement, la sévérité ${trigger.severity} et les tags.
+    9. Enregistrer une preuve.
+
+  expected_result: >
+    Le déclencheur « ${trigger.name} » passe en état PROBLÈME dans le délai prévu
+    lorsque la condition définie dans son expression est atteinte.
