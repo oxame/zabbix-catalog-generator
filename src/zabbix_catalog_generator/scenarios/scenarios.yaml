@@ -134,20 +134,22 @@
     type: dependencies
   objective: >
     Vérifier que le déclencheur « ${trigger.name} » est correctement inhibé
-    lorsqu'un déclencheur parent est actif.
-  prerequisites: >
-    La dépendance entre déclencheurs est configurée et le déclencheur parent peut
-    être activé pendant le test.
+    lorsqu'un des déclencheurs parents configurés est actif.
+  prerequisites: |
+    Les dépendances suivantes sont configurées et peuvent être activées pendant le test :
+    ${trigger.dependencies}
   procedure: |
-    1. Identifier le déclencheur parent configuré.
-    2. Provoquer l'incident parent.
+    1. Relever les déclencheurs parents configurés :
+       ${trigger.dependencies}
+    2. Provoquer l'incident sur l'un des déclencheurs parents.
     3. Vérifier la création de l'événement principal.
-    4. Provoquer simultanément la condition du déclencheur dépendant.
+    4. Provoquer simultanément la condition du déclencheur dépendant « ${trigger.name} ».
     5. Vérifier que l'événement dépendant est inhibé.
-    6. Rétablir le parent et contrôler le comportement du déclencheur dépendant.
+    6. Rétablir le déclencheur parent.
+    7. Contrôler ensuite le comportement du déclencheur dépendant.
   expected_result: >
-    Le déclencheur parent génère l'événement principal et le déclencheur dépendant
-    est inhibé conformément à la configuration.
+    Le déclencheur parent actif génère l'événement principal et le déclencheur
+    « ${trigger.name} » est inhibé conformément aux dépendances configurées.
 
 - code: TEST-TRG-008
   title: Validation de la sévérité
