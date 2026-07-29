@@ -25,6 +25,11 @@ def _probe(*triggers: TriggerDefinition) -> ProbeDefinition:
         units="%",
         history="7d",
         trends="365d",
+        template_macros=(
+            ("{$CPU.MAX}", "90"),
+            ("{$CPU.RECOVERY}", "80"),
+            ("{$UNUSED}", "123"),
+        ),
         triggers=triggers,
     )
 
@@ -40,14 +45,15 @@ def _create_model(path: Path) -> None:
             "Nom du déclencheur",
             "Sévérité",
             "Type de test",
+            "Macros",
             "Prérequis",
             "Action",
             "Résultat attendu",
             "Commentaires",
         ]
     )
-    sheet.append([None] * 9)
-    sheet.append([None] * 9)
+    sheet.append([None] * 10)
+    sheet.append([None] * 10)
     for cell in sheet[3]:
         cell.fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
         cell.font = Font(name="Arial", bold=True)
@@ -65,6 +71,7 @@ def test_test_case_defaults_are_empty() -> None:
         test_type="PROBLEM",
     )
 
+    assert test_case.macros == ""
     assert test_case.prerequisites == ""
     assert test_case.action == ""
     assert test_case.expected_result == ""
@@ -75,8 +82,8 @@ def test_build_test_cases_creates_problem_and_recovery_scenarios() -> None:
     trigger = TriggerDefinition(
         name="CPU usage is high",
         severity="HIGH",
-        expression="last(/template/system.cpu.util)>90",
-        recovery_expression="last(/template/system.cpu.util)<80",
+        expression="last(/template/system.cpu.util)>{$CPU.MAX}",
+        recovery_expression="last(/template/system.cpu.util)<{$CPU.RECOVERY}",
     )
 
     test_cases = build_test_cases([_probe(trigger)])
@@ -86,6 +93,36 @@ def test_build_test_cases_creates_problem_and_recovery_scenarios() -> None:
     assert all(test_case.resource == "CPU utilization" for test_case in test_cases)
     assert all(test_case.trigger_name == "CPU usage is high" for test_case in test_cases)
     assert all(test_case.severity == "HIGH" for test_case in test_cases)
+    assert all(
+        test_case.macros == "{$CPU.MAX}=90\n{$CPU.RECOVERY}=80"
+        for test_case in test_cases
+    )
+
+
+def test_build_test_cases_only_exports_macros_used_by_trigger() -> None:
+    trigger = TriggerDefinition(
+        name="CPU usage is high",
+        expression=(
+            "avg(/template/system.cpu.util,5m)>{$CPU.MAX} "
+            "and last(/template/system.cpu.util)>{$CPU.MAX}"
+        ),
+    )
+
+    test_cases = build_test_cases([_probe(trigger)])
+
+    assert test_cases[0].macros == "{$CPU.MAX}=90"
+    assert "{$UNUSED}" not in test_cases[0].macros
+
+
+def test_build_test_cases_marks_undefined_trigger_macro() -> None:
+    trigger = TriggerDefinition(
+        name="CPU usage is high",
+        expression="last(/template/system.cpu.util)>{$CPU.UNKNOWN}",
+    )
+
+    test_cases = build_test_cases([_probe(trigger)])
+
+    assert test_cases[0].macros == "{$CPU.UNKNOWN}=<non définie>"
 
 
 def test_build_test_cases_skips_recovery_without_expression() -> None:
@@ -112,6 +149,7 @@ def test_generate_testbook_populates_model_and_preserves_style(tmp_path: Path) -
             trigger_name="CPU usage is high",
             severity="HIGH",
             test_type="PROBLEM",
+            macros="{$CPU.MAX}=90",
             prerequisites="Agent actif",
             action="Générer une charge CPU",
             expected_result="Le déclencheur passe en état PROBLEM.",
@@ -123,6 +161,7 @@ def test_generate_testbook_populates_model_and_preserves_style(tmp_path: Path) -
             trigger_name="CPU usage is high",
             severity="HIGH",
             test_type="RECOVERY",
+            macros="{$CPU.MAX}=90\n{$CPU.RECOVERY}=80",
             expected_result="Le déclencheur revient à l'état OK.",
         ),
     ]
@@ -134,9 +173,11 @@ def test_generate_testbook_populates_model_and_preserves_style(tmp_path: Path) -
     sheet = workbook["Tests"]
     assert sheet.cell(3, 1).value == "Linux by Zabbix agent"
     assert sheet.cell(3, 5).value == "PROBLEM"
-    assert sheet.cell(3, 8).value == "Le déclencheur passe en état PROBLEM."
+    assert sheet.cell(3, 6).value == "{$CPU.MAX}=90"
+    assert sheet.cell(3, 9).value == "Le déclencheur passe en état PROBLEM."
     assert sheet.cell(4, 5).value == "RECOVERY"
-    assert sheet.cell(4, 8).value == "Le déclencheur revient à l'état OK."
+    assert sheet.cell(4, 6).value == "{$CPU.MAX}=90\n{$CPU.RECOVERY}=80"
+    assert sheet.cell(4, 9).value == "Le déclencheur revient à l'état OK."
     assert sheet.cell(3, 1).fill.fgColor.rgb == sheet.cell(4, 1).fill.fgColor.rgb
     assert sheet.cell(4, 1).font.bold is True
     assert sheet.row_dimensions[4].height == 42
