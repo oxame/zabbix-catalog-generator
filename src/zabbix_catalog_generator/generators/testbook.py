@@ -1,4 +1,4 @@
-"""Build and export test scenarios from parsed Zabbix probes."""
+"""Build and export qualification scenarios from parsed Zabbix probes."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from ..models import ProbeDefinition, TestCase
+from ..models import ProbeDefinition, TestCase, TriggerDefinition
+from ..scenarios import Scenario, load_scenarios
 
 TESTBOOK_HEADERS: dict[str, tuple[str, ...]] = {
     "policy_name": ("Nom de la politique", "Politique", "Policy name", "Policy"),
@@ -23,25 +24,40 @@ TESTBOOK_HEADERS: dict[str, tuple[str, ...]] = {
         "Detection",
     ),
     "severity": ("Sévérité", "Severite", "Severity"),
-    "test_type": ("Type de test", "Type", "Test type"),
+    "expression": ("Expression", "Expression du déclencheur", "Trigger expression"),
+    "recovery_expression": (
+        "Expression de rétablissement",
+        "Expression de retablissement",
+        "Recovery expression",
+    ),
     "macros": ("Macros", "Macro", "Macros du déclencheur", "Trigger macros"),
+    "tags": ("Tags", "Tags du déclencheur", "Trigger tags"),
+    "test_code": ("Code test", "Code du test", "Test code"),
+    "scenario": ("Scénario", "Scenario"),
+    "objective": ("Objectif", "Objective"),
     "prerequisites": ("Prérequis", "Prerequis", "Prerequisites"),
-    "action": ("Action", "Actions"),
+    "procedure": ("Procédure", "Procedure", "Action", "Actions"),
     "expected_result": ("Résultat attendu", "Resultat attendu", "Expected result"),
+    "tester": ("Testeur", "Tester"),
+    "date": ("Date", "Date d'exécution", "Execution date"),
+    "status": ("Statut", "Status"),
+    "evidence": ("Preuve", "Evidence"),
     "comments": ("Commentaires", "Commentaire", "Comments", "Comment"),
+    "generation": ("Génération", "Generation", "Mode de génération"),
 }
 
-# Severity and manual columns are optional because compact testbook models may
-# intentionally expose only the columns needed to execute and record a test.
 _REQUIRED_HEADERS = {
     "policy_name",
     "resource",
     "trigger_name",
-    "test_type",
+    "test_code",
+    "scenario",
     "expected_result",
 }
 
 _USER_MACRO_PATTERN = re.compile(r"\{\$[^{}]+\}")
+_PLACEHOLDER_PATTERN = re.compile(r"\$\{([a-zA-Z0-9_.]+)\}")
+_TIME_FUNCTION_PATTERN = re.compile(r"\b(?:avg|min|max|sum|count|trendavg|trendmin|trendmax)\s*\(", re.I)
 
 
 def _normalise(value: object) -> str:
@@ -129,13 +145,14 @@ def _write_test_case(
         sheet.cell(row, column).value = getattr(test_case, field)
 
 
-def _trigger_macros(probe: ProbeDefinition, expression: str, recovery_expression: str) -> str:
+def _trigger_macros(probe: ProbeDefinition, trigger: TriggerDefinition) -> str:
     """Return only user macros referenced by a trigger, preserving expression order."""
 
     values = dict(probe.template_macros)
     seen: set[str] = set()
     lines: list[str] = []
-    for macro in _USER_MACRO_PATTERN.findall(f"{expression}\n{recovery_expression}"):
+    expressions = f"{trigger.expression}\n{trigger.recovery_expression}"
+    for macro in _USER_MACRO_PATTERN.findall(expressions):
         if macro in seen:
             continue
         seen.add(macro)
@@ -144,40 +161,93 @@ def _trigger_macros(probe: ProbeDefinition, expression: str, recovery_expression
     return "\n".join(lines)
 
 
-def build_test_cases(probes: list[ProbeDefinition]) -> list[TestCase]:
-    """Create problem and recovery scenarios for enabled trigger definitions."""
+def _trigger_tags(trigger: TriggerDefinition) -> str:
+    return "\n".join(
+        f"{name}={value}" if value else name
+        for name, value in trigger.tags
+    )
 
+
+def _is_applicable(scenario: Scenario, trigger: TriggerDefinition, macros: str) -> bool:
+    rule = scenario.applies.casefold()
+    if rule == "always":
+        return True
+    if rule == "uses_macros":
+        return bool(macros)
+    if rule == "recovery_expression":
+        return bool(trigger.recovery_expression.strip())
+    if rule == "nodata":
+        return "nodata(" in trigger.expression.casefold()
+    if rule == "time_window":
+        return bool(_TIME_FUNCTION_PATTERN.search(trigger.expression))
+    if rule == "dependencies":
+        return bool(getattr(trigger, "dependencies", ()))
+    raise ValueError(f"Unknown scenario applicability rule: {scenario.applies}")
+
+
+def _render(text: str, context: dict[str, str]) -> str:
+    """Replace documented ${namespace.field} variables and keep unknown ones visible."""
+
+    return _PLACEHOLDER_PATTERN.sub(
+        lambda match: context.get(match.group(1), match.group(0)),
+        text,
+    )
+
+
+def _render_context(
+    probe: ProbeDefinition,
+    trigger: TriggerDefinition,
+    macros: str,
+    tags: str,
+) -> dict[str, str]:
+    return {
+        "policy.name": probe.template_name,
+        "resource.name": probe.name,
+        "resource.key": probe.key,
+        "resource.delay": probe.delay or "non défini",
+        "trigger.name": trigger.name,
+        "trigger.expression": trigger.expression or "non définie",
+        "trigger.recovery_expression": trigger.recovery_expression or "non définie",
+        "trigger.severity": trigger.severity,
+        "trigger.description": trigger.description,
+        "trigger.macros": macros or "Aucune macro utilisée.",
+        "trigger.tags": tags or "Aucun tag configuré.",
+    }
+
+
+def build_test_cases(
+    probes: list[ProbeDefinition],
+    *,
+    scenarios_path: str | Path | None = None,
+) -> list[TestCase]:
+    """Create applicable qualification scenarios for enabled trigger definitions."""
+
+    scenarios = load_scenarios(scenarios_path)
     test_cases: list[TestCase] = []
     for probe in probes:
         for trigger in probe.triggers:
-            macros = _trigger_macros(
-                probe,
-                trigger.expression,
-                trigger.recovery_expression,
-            )
-            test_cases.append(
-                TestCase(
-                    policy_name=probe.template_name,
-                    resource=probe.name,
-                    trigger_name=trigger.name,
-                    severity=trigger.severity,
-                    test_type="PROBLEM",
-                    macros=macros,
-                    expected_result=f"Le déclencheur « {trigger.name} » passe en état PROBLEM.",
-                )
-            )
-            if trigger.recovery_expression:
+            macros = _trigger_macros(probe, trigger)
+            tags = _trigger_tags(trigger)
+            context = _render_context(probe, trigger, macros, tags)
+            for scenario in scenarios:
+                if not _is_applicable(scenario, trigger, macros):
+                    continue
                 test_cases.append(
                     TestCase(
                         policy_name=probe.template_name,
                         resource=probe.name,
                         trigger_name=trigger.name,
                         severity=trigger.severity,
-                        test_type="RECOVERY",
+                        expression=trigger.expression,
+                        recovery_expression=trigger.recovery_expression,
                         macros=macros,
-                        expected_result=(
-                            f"Le déclencheur « {trigger.name} » revient à l'état OK."
-                        ),
+                        tags=tags,
+                        test_code=scenario.code,
+                        scenario=scenario.title,
+                        objective=_render(scenario.objective, context),
+                        prerequisites=_render(scenario.prerequisites, context),
+                        procedure=_render(scenario.procedure, context),
+                        expected_result=_render(scenario.expected_result, context),
                     )
                 )
     return test_cases
