@@ -36,6 +36,22 @@ def _macros(raw: Iterable[dict[str, Any]] | None) -> tuple[Macro, ...]:
     )
 
 
+def _trigger_dependencies(raw: Iterable[dict[str, Any] | str] | None) -> tuple[str, ...]:
+    """Return readable parent trigger names from an exported dependency list."""
+
+    names: list[str] = []
+    for dependency in raw or []:
+        if isinstance(dependency, dict):
+            name = str(dependency.get("name", "")).strip()
+            if not name:
+                name = str(dependency.get("expression", "")).strip()
+        else:
+            name = str(dependency).strip()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
 def _preprocessing_steps(raw: Iterable[dict[str, Any]] | None) -> tuple[str, ...]:
     steps: list[str] = []
     for step in raw or []:
@@ -74,6 +90,7 @@ def _trigger_from_dict(trigger: dict[str, Any]) -> TriggerDefinition:
         description=str(trigger.get("description", "")),
         recovery_expression=str(trigger.get("recovery_expression", "")),
         tags=_tags(trigger.get("tags")),
+        dependencies=_trigger_dependencies(trigger.get("dependencies")),
     )
 
 
@@ -170,7 +187,6 @@ def _resolve_dependencies(probes: list[ProbeDefinition]) -> list[ProbeDefinition
             for candidate in known_keys:
                 if candidate != probe.key and candidate in probe.calculation_formula:
                     dependency_keys.append(candidate)
-
         unique_keys = tuple(dict.fromkeys(key for key in dependency_keys if key))
         dependency_names = tuple(
             dict.fromkeys(key_to_name[key] for key in unique_keys if key in key_to_name)
