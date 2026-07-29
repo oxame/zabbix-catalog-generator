@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-import sys
 
 from .excel import generate_catalogue
 from .parser import TemplateFormatError, load_active_probes
