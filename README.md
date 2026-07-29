@@ -1,6 +1,6 @@
 # Zabbix Catalog Generator
 
-Générateur de catalogues de supervision Excel à partir de templates Zabbix exportés au format YAML.
+Générateur de catalogues de supervision et de cahiers de tests Excel à partir de templates Zabbix exportés au format YAML.
 
 ## Périmètre de la V1
 
@@ -22,7 +22,7 @@ Prérequis : Python 3.10 ou supérieur doit être installé et accessible depuis
 Installation du package fourni :
 
 ```powershell
-py -m pip install .\zabbix_catalog_generator-0.2.0-py3-none-any.whl
+py -m pip install .\zabbix_catalog_generator-0.3.0-py3-none-any.whl
 ```
 
 Vérification :
@@ -30,12 +30,13 @@ Vérification :
 ```powershell
 zabbix-catalog --version
 zabbix-catalog --help
+zabbix-catalog tests --help
 ```
 
 Mise à jour vers une nouvelle version :
 
 ```powershell
-py -m pip install --upgrade .\zabbix_catalog_generator-0.3.0-py3-none-any.whl
+py -m pip install --force-reinstall .\zabbix_catalog_generator-0.3.0-py3-none-any.whl
 ```
 
 Désinstallation :
@@ -62,7 +63,7 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
-## Utilisation
+## Génération du catalogue
 
 Sous PowerShell :
 
@@ -82,7 +83,42 @@ zabbix-catalog "EFS- Oracle by Zabbix agent 2 - Qualif.yaml" \
 
 La feuille active du modèle est utilisée par défaut. Une autre feuille peut être choisie avec `--sheet`.
 
-## Données alimentées
+## Génération du cahier de tests
+
+Sous PowerShell :
+
+```powershell
+zabbix-catalog tests `
+  "EFS- Oracle by Zabbix agent 2 - Qualif.yaml" `
+  --model "Modele_Test.xlsx" `
+  --output "Cahier_Tests_Oracle.xlsx"
+```
+
+Sous l'invite de commandes Windows (`cmd.exe`) :
+
+```cmd
+zabbix-catalog tests ^
+  "EFS- Oracle by Zabbix agent 2 - Qualif.yaml" ^
+  --model "Modele_Test.xlsx" ^
+  --output "Cahier_Tests_Oracle.xlsx"
+```
+
+Le générateur crée :
+
+- un scénario `PROBLEM` pour chaque déclencheur actif ;
+- un scénario `RECOVERY` lorsqu'une expression de rétablissement est définie.
+
+Les colonnes automatiques sont alimentées à partir du template Zabbix : politique, ressource, détection ou déclencheur, type de test et résultat attendu. Les colonnes manuelles, telles que `Action` et `Statut`, restent disponibles dans le classeur.
+
+Le modèle compact suivant est accepté :
+
+```text
+Politique | Ressource | Détection | Type | Action | Résultat attendu | Statut
+```
+
+Les variantes `Déclencheur`, `Nom du déclencheur`, `Trigger` et `Trigger name` sont également reconnues. La colonne `Sévérité` est facultative.
+
+## Données alimentées dans le catalogue
 
 Le générateur recherche les colonnes du modèle par leur intitulé et remplit notamment :
 
@@ -114,8 +150,8 @@ Les livrables sont créés dans le dossier `dist/` :
 
 ```text
 dist/
-├── zabbix_catalog_generator-0.2.0-py3-none-any.whl
-└── zabbix_catalog_generator-0.2.0.tar.gz
+├── zabbix_catalog_generator-0.3.0-py3-none-any.whl
+└── zabbix_catalog_generator-0.3.0.tar.gz
 ```
 
 Contrôle du package avant distribution :

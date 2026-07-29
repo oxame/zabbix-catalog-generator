@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from .excel import generate_catalogue
+from .generators import build_test_cases, generate_testbook
 from .parser import TemplateFormatError, load_active_probes
 
 
@@ -13,13 +14,22 @@ def _package_version() -> str:
     try:
         return version("zabbix-catalog-generator")
     except PackageNotFoundError:
-        return "0.2.0"
+        return "0.3.0"
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, command: str = "catalogue") -> argparse.ArgumentParser:
+    if command == "tests":
+        description = "Generate an Excel testbook from active Zabbix triggers."
+        model_help = "Excel testbook model"
+        output_help = "Generated testbook path"
+    else:
+        description = "Generate an Excel supervision catalogue from active Zabbix probes."
+        model_help = "Excel catalogue model"
+        output_help = "Generated catalogue path"
+
     parser = argparse.ArgumentParser(
-        prog="zabbix-catalog",
-        description="Generate an Excel supervision catalogue from active Zabbix probes.",
+        prog=f"zabbix-catalog {command}" if command != "catalogue" else "zabbix-catalog",
+        description=description,
     )
     parser.add_argument(
         "--version",
@@ -27,8 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"Zabbix Catalog Generator {_package_version()}",
     )
     parser.add_argument("template", type=Path, help="Zabbix YAML export")
-    parser.add_argument("--model", required=True, type=Path, help="Excel catalogue model")
-    parser.add_argument("--output", type=Path, help="Generated catalogue path")
+    parser.add_argument("--model", required=True, type=Path, help=model_help)
+    parser.add_argument("--output", type=Path, help=output_help)
     parser.add_argument("--sheet", help="Worksheet to populate (default: active worksheet)")
     return parser
 
@@ -41,9 +51,19 @@ def _success(message: str) -> None:
     print(f"[OK] {message}", flush=True)
 
 
+def _resolve_command(argv: list[str]) -> tuple[str, list[str]]:
+    if argv and argv[0] in {"catalogue", "tests"}:
+        return argv[0], argv[1:]
+    return "catalogue", argv
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    output = args.output or Path.cwd() / f"Catalogue_{args.template.stem}.xlsx"
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    command, command_argv = _resolve_command(raw_argv)
+    args = build_parser(command=command).parse_args(command_argv)
+
+    default_prefix = "Cahier_Test" if command == "tests" else "Catalogue"
+    output = args.output or Path.cwd() / f"{default_prefix}_{args.template.stem}.xlsx"
 
     print("=" * 54)
     print(" Zabbix Catalog Generator")
@@ -59,9 +79,20 @@ def main(argv: list[str] | None = None) -> int:
             _success(f"{dependent_count} sondes dépendantes ou calculées identifiées")
 
         _step(f"Chargement du modèle Excel : {args.model}")
-        _step("Génération du catalogue")
-        generate_catalogue(args.model, output, probes, sheet_name=args.sheet)
-        _success("Catalogue Excel généré")
+        if command == "tests":
+            test_cases = build_test_cases(probes)
+            _step("Génération du cahier de tests")
+            generate_testbook(
+                args.model,
+                output,
+                test_cases,
+                sheet_name=args.sheet,
+            )
+            _success(f"Cahier de tests généré ({len(test_cases)} scénarios)")
+        else:
+            _step("Génération du catalogue")
+            generate_catalogue(args.model, output, probes, sheet_name=args.sheet)
+            _success("Catalogue Excel généré")
     except (OSError, ValueError, TemplateFormatError) as exc:
         print(f"[ERREUR] {exc}", file=sys.stderr)
         return 1
@@ -73,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Sondes actives          : {len(probes)}")
     print(f"Prototypes LLD          : {lld_count}")
     print(f"Déclencheurs actifs     : {trigger_count}")
-    print(f"Catalogue               : {output}")
+    label = "Cahier de tests" if command == "tests" else "Catalogue"
+    print(f"{label:<23}: {output}")
     print("=" * 54)
     return 0
 

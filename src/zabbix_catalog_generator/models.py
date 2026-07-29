@@ -43,3 +43,18 @@ class ProbeDefinition:
     template_macros: tuple[Macro, ...] = field(default_factory=tuple)
     template_tags: tuple[Tag, ...] = field(default_factory=tuple)
     triggers: tuple[TriggerDefinition, ...] = field(default_factory=tuple)
+
+
+@dataclass(slots=True, frozen=True)
+class TestCase:
+    """A test scenario generated from an enabled Zabbix trigger."""
+
+    policy_name: str
+    resource: str
+    trigger_name: str
+    severity: str
+    test_type: str
+    prerequisites: str = ""
+    action: str = ""
+    expected_result: str = ""
+    comments: str = ""
