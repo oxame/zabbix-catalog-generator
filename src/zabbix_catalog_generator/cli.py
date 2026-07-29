@@ -14,7 +14,7 @@ def _package_version() -> str:
     try:
         return version("zabbix-catalog-generator")
     except PackageNotFoundError:
-        return "0.2.0"
+        return "0.3.0"
 
 
 def build_parser(*, command: str = "catalogue") -> argparse.ArgumentParser:
