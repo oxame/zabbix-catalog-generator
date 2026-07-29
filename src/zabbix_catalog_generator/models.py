@@ -54,6 +54,7 @@ class TestCase:
     trigger_name: str
     severity: str
     test_type: str
+    macros: str = ""
     prerequisites: str = ""
     action: str = ""
     expected_result: str = ""
