@@ -22,7 +22,7 @@ Prérequis : Python 3.10 ou supérieur doit être installé et accessible depuis
 Installation du package fourni :
 
 ```powershell
-py -m pip install .\zabbix_catalog_generator-0.2.0-py3-none-any.whl
+py -m pip install .\zabbix_catalog_generator-0.3.0-py3-none-any.whl
 ```
 
 Vérification :
@@ -36,7 +36,7 @@ zabbix-catalog tests --help
 Mise à jour vers une nouvelle version :
 
 ```powershell
-py -m pip install --force-reinstall .\zabbix_catalog_generator-0.2.0-py3-none-any.whl
+py -m pip install --force-reinstall .\zabbix_catalog_generator-0.3.0-py3-none-any.whl
 ```
 
 Désinstallation :
@@ -150,8 +150,8 @@ Les livrables sont créés dans le dossier `dist/` :
 
 ```text
 dist/
-├── zabbix_catalog_generator-0.2.0-py3-none-any.whl
-└── zabbix_catalog_generator-0.2.0.tar.gz
+├── zabbix_catalog_generator-0.3.0-py3-none-any.whl
+└── zabbix_catalog_generator-0.3.0.tar.gz
 ```
 
 Contrôle du package avant distribution :
