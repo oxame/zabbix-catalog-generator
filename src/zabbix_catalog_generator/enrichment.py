@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from .models import ProbeDefinition
 
@@ -77,14 +77,9 @@ CATEGORY_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 
 
 def _search_text(probe: ProbeDefinition) -> str:
-    return " ".join(
-        (
-            probe.template_name,
-            probe.name,
-            probe.key,
-            probe.description,
-            probe.discovery_rule,
-        )
+    return (
+        f"{probe.template_name} {probe.name} {probe.key} "
+        f"{probe.description} {probe.discovery_rule}"
     ).casefold()
 
 
