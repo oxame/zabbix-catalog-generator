@@ -14,7 +14,14 @@ from ..models import ProbeDefinition, TestCase
 TESTBOOK_HEADERS: dict[str, tuple[str, ...]] = {
     "policy_name": ("Nom de la politique", "Politique", "Policy name", "Policy"),
     "resource": ("Ressource", "Resource"),
-    "trigger_name": ("Nom du déclencheur", "Déclencheur", "Trigger name", "Trigger"),
+    "trigger_name": (
+        "Nom du déclencheur",
+        "Déclencheur",
+        "Détection",
+        "Trigger name",
+        "Trigger",
+        "Detection",
+    ),
     "severity": ("Sévérité", "Severite", "Severity"),
     "test_type": ("Type de test", "Type", "Test type"),
     "prerequisites": ("Prérequis", "Prerequis", "Prerequisites"),
@@ -23,11 +30,12 @@ TESTBOOK_HEADERS: dict[str, tuple[str, ...]] = {
     "comments": ("Commentaires", "Commentaire", "Comments", "Comment"),
 }
 
+# Severity and manual columns are optional because compact testbook models may
+# intentionally expose only the columns needed to execute and record a test.
 _REQUIRED_HEADERS = {
     "policy_name",
     "resource",
     "trigger_name",
-    "severity",
     "test_type",
     "expected_result",
 }
