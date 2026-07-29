@@ -47,15 +47,30 @@ class ProbeDefinition:
 
 @dataclass(slots=True, frozen=True)
 class TestCase:
-    """A test scenario generated from an enabled Zabbix trigger."""
+    """A qualification scenario generated from an enabled Zabbix trigger."""
 
+    # Zabbix information generated from the source template.
     policy_name: str
     resource: str
     trigger_name: str
     severity: str
-    test_type: str
+    expression: str = ""
+    recovery_expression: str = ""
     macros: str = ""
+    tags: str = ""
+
+    # Qualification scenario generated from the scenario repository.
+    test_code: str = ""
+    scenario: str = ""
+    objective: str = ""
     prerequisites: str = ""
-    action: str = ""
+    procedure: str = ""
     expected_result: str = ""
+
+    # Fields completed during qualification.
+    tester: str = ""
+    date: str = ""
+    status: str = ""
+    evidence: str = ""
     comments: str = ""
+    generation: str = "AUTO"
