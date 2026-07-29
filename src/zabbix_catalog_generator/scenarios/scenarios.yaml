@@ -2,14 +2,11 @@
   title: Déclenchement nominal
   applies:
     type: always
-
   objective: >
     Vérifier que le déclencheur « ${trigger.name} » se déclenche lorsque
     la condition définie dans son expression est réellement atteinte.
-
   prerequisites: >
     La collecte de la ressource « ${resource.name} » est opérationnelle.
-
   procedure: |
     1. Vérifier que l'item « ${resource.name} » collecte correctement une valeur.
     2. Relever la valeur normale avant le test.
@@ -22,7 +19,190 @@
     7. Vérifier le passage du déclencheur en état PROBLÈME.
     8. Contrôler le nom de l'événement, la sévérité ${trigger.severity} et les tags.
     9. Enregistrer une preuve.
-
   expected_result: >
     Le déclencheur « ${trigger.name} » passe en état PROBLÈME dans le délai prévu
     lorsque la condition définie dans son expression est atteinte.
+
+- code: TEST-TRG-002
+  title: Absence de faux positif
+  applies:
+    type: always
+  objective: >
+    Vérifier que le déclencheur « ${trigger.name} » reste à l'état OK tant que
+    la condition de déclenchement n'est pas atteinte.
+  prerequisites: >
+    La collecte de la ressource « ${resource.name} » est opérationnelle.
+  procedure: |
+    1. Identifier la condition de déclenchement dans l'expression :
+       ${trigger.expression}
+    2. Positionner la valeur au plus près du seuil sans atteindre la condition.
+    3. Maintenir cette valeur pendant plusieurs cycles de collecte (${resource.delay}).
+    4. Contrôler l'historique de l'item « ${resource.name} ».
+    5. Vérifier qu'aucun événement n'est généré.
+  expected_result: >
+    Le déclencheur « ${trigger.name} » reste à l'état OK tant que sa condition
+    de déclenchement n'est pas atteinte.
+
+- code: TEST-TRG-003
+  title: Validation du seuil
+  applies:
+    type: uses_macros
+  objective: >
+    Vérifier que les seuils définis par les macros utilisées par le déclencheur
+    « ${trigger.name} » correspondent aux valeurs validées.
+  prerequisites: >
+    Les valeurs métier de référence sont disponibles pour comparaison.
+  procedure: |
+    1. Relever les macros utilisées par le déclencheur :
+       ${trigger.macros}
+    2. Comparer leurs valeurs au catalogue de supervision validé.
+    3. Simuler une valeur qui ne satisfait pas la condition.
+    4. Vérifier que le déclencheur reste à l'état OK.
+    5. Simuler une valeur qui satisfait la condition.
+    6. Vérifier le passage du déclencheur en état PROBLÈME.
+  expected_result: >
+    Le déclenchement intervient conformément aux valeurs des macros utilisées
+    et validées dans le catalogue de supervision.
+
+- code: TEST-TRG-004
+  title: Retour à la normale
+  applies:
+    type: recovery_expression
+  objective: >
+    Vérifier que le déclencheur « ${trigger.name} » revient à l'état OK après
+    la disparition de l'anomalie.
+  prerequisites: >
+    Le déclencheur dispose d'une expression de rétablissement et peut être placé
+    à l'état PROBLÈME.
+  procedure: |
+    1. Provoquer la condition de déclenchement :
+       ${trigger.expression}
+    2. Vérifier le passage à l'état PROBLÈME.
+    3. Rétablir la ressource conformément à l'expression de rétablissement :
+       ${trigger.recovery_expression}
+    4. Attendre le prochain cycle de collecte (${resource.delay}).
+    5. Vérifier le retour du déclencheur à l'état OK.
+    6. Contrôler la durée totale de l'événement.
+  expected_result: >
+    Le déclencheur « ${trigger.name} » revient à l'état OK après réception
+    d'une valeur satisfaisant l'expression de rétablissement.
+
+- code: TEST-TRG-005
+  title: Persistance de l'anomalie
+  applies:
+    type: time_window
+  objective: >
+    Vérifier que le déclencheur « ${trigger.name} » respecte la durée minimale
+    ou le nombre d'occurrences défini dans son expression.
+  prerequisites: >
+    La condition d'anomalie peut être générée de manière brève puis persistante.
+  procedure: |
+    1. Examiner la fenêtre temporelle utilisée dans l'expression :
+       ${trigger.expression}
+    2. Générer une anomalie plus courte que la durée prévue.
+    3. Vérifier qu'aucun événement n'est généré prématurément.
+    4. Générer de nouveau l'anomalie et la maintenir pendant la durée prévue.
+    5. Contrôler le déclenchement après satisfaction de la condition temporelle.
+  expected_result: >
+    Le déclencheur « ${trigger.name} » se déclenche uniquement lorsque la condition
+    persiste pendant la durée ou le nombre de contrôles défini.
+
+- code: TEST-TRG-006
+  title: Donnée indisponible
+  applies:
+    type: nodata
+  objective: >
+    Vérifier le comportement du déclencheur « ${trigger.name} » lorsque l'item
+    « ${resource.name} » ne reçoit plus de données.
+  prerequisites: >
+    La collecte de l'item peut être interrompue temporairement sans impact durable.
+  procedure: |
+    1. Vérifier la réception normale des données de l'item « ${resource.name} ».
+    2. Interrompre temporairement la collecte.
+    3. Attendre la durée définie dans l'expression :
+       ${trigger.expression}
+    4. Contrôler le déclenchement du scénario nodata.
+    5. Vérifier qu'aucun événement incohérent n'est généré par un autre déclencheur.
+    6. Rétablir la collecte et contrôler le retour à la normale.
+  expected_result: >
+    L'absence de données est détectée conformément à l'expression nodata, sans
+    provoquer de faux incident sur les autres déclencheurs.
+
+- code: TEST-TRG-007
+  title: Dépendance entre déclencheurs
+  applies:
+    type: dependencies
+  objective: >
+    Vérifier que le déclencheur « ${trigger.name} » est correctement inhibé
+    lorsqu'un déclencheur parent est actif.
+  prerequisites: >
+    La dépendance entre déclencheurs est configurée et le déclencheur parent peut
+    être activé pendant le test.
+  procedure: |
+    1. Identifier le déclencheur parent configuré.
+    2. Provoquer l'incident parent.
+    3. Vérifier la création de l'événement principal.
+    4. Provoquer simultanément la condition du déclencheur dépendant.
+    5. Vérifier que l'événement dépendant est inhibé.
+    6. Rétablir le parent et contrôler le comportement du déclencheur dépendant.
+  expected_result: >
+    Le déclencheur parent génère l'événement principal et le déclencheur dépendant
+    est inhibé conformément à la configuration.
+
+- code: TEST-TRG-008
+  title: Validation de la sévérité
+  applies:
+    type: always
+  objective: >
+    Vérifier que la sévérité du déclencheur « ${trigger.name} » correspond à
+    l'impact métier validé.
+  prerequisites: >
+    Le niveau de sévérité validé par le métier est disponible dans le catalogue.
+  procedure: |
+    1. Relever la sévérité configurée : ${trigger.severity}.
+    2. Comparer cette valeur à la sévérité validée dans le catalogue.
+    3. Déclencher un événement de test.
+    4. Contrôler la sévérité affichée dans Zabbix.
+  expected_result: >
+    La sévérité affichée dans Zabbix est « ${trigger.severity} » et correspond
+    à celle validée dans le catalogue de supervision.
+
+- code: TEST-TRG-009
+  title: Validation des tags
+  applies:
+    type: always
+  objective: >
+    Vérifier que les tags nécessaires au traitement de l'événement sont présents
+    sur le déclencheur « ${trigger.name} ».
+  prerequisites: >
+    Le référentiel des tags obligatoires est disponible.
+  procedure: |
+    1. Relever les tags configurés :
+       ${trigger.tags}
+    2. Comparer les tags au référentiel attendu.
+    3. Générer un événement de test.
+    4. Contrôler les tags portés par l'événement.
+    5. Vérifier qu'ils permettent le filtrage et l'orientation vers l'équipe appropriée.
+  expected_result: >
+    Les tags configurés permettent l'identification, le filtrage, la notification
+    et l'orientation correcte de l'événement.
+
+- code: TEST-TRG-010
+  title: Validation du message d'événement
+  applies:
+    type: always
+  objective: >
+    Vérifier que le message d'événement du déclencheur « ${trigger.name} » est
+    compréhensible et exploitable par les équipes concernées.
+  prerequisites: >
+    Un événement de test peut être généré et consulté dans Zabbix.
+  procedure: |
+    1. Provoquer la condition de déclenchement.
+    2. Relever le nom et le message de l'événement généré.
+    3. Vérifier que le composant concerné est identifiable.
+    4. Vérifier que l'anomalie, la valeur observée et le seuil attendu sont compréhensibles.
+    5. Vérifier que l'environnement et l'impact potentiel peuvent être identifiés.
+    6. Confirmer que la lecture de l'expression technique n'est pas nécessaire.
+  expected_result: >
+    Le message d'événement est explicite, exploitable et permet de comprendre
+    l'anomalie sans analyser l'expression technique du déclencheur.
