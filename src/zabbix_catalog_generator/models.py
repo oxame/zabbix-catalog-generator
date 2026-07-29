@@ -16,6 +16,7 @@ class TriggerDefinition:
     description: str = ""
     recovery_expression: str = ""
     tags: tuple[Tag, ...] = field(default_factory=tuple)
+    dependencies: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(slots=True, frozen=True)
