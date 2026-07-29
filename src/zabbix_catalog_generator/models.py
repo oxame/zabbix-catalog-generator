@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 Tag = tuple[str, str]
 Macro = tuple[str, str]
 
