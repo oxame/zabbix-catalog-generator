@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from copy import copy
 from pathlib import Path
-import re
 
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
