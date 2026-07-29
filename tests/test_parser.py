@@ -34,6 +34,9 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: performance
+              dependencies:
+                - name: Parent availability trigger
+                  expression: last(/Demo/demo.raw)=0
             - name: Disabled trigger
               status: DISABLED
         - name: Dependent item
@@ -99,6 +102,7 @@ zabbix_export:
     assert probes[1].template_macros == (("{$CPU.MAX}", "90"),)
     assert probes[1].template_tags == (("component", "demo"),)
     assert probes[1].triggers[0].tags == (("scope", "performance"),)
+    assert probes[1].triggers[0].dependencies == ("Parent availability trigger",)
     assert probes[2].dependency_names == ("Raw value",)
     assert probes[3].dependency_names == ("Active item {$CPU.MAX}", "Raw value")
     assert [trigger.name for trigger in probes[4].triggers] == [
